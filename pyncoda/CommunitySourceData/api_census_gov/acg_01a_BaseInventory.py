@@ -413,8 +413,11 @@ class BaseInventory():
             if not api_key:
                 error_msg = ("Census API did not return JSON, and no API key was found. "
                              "Set the CENSUS_API_KEY environment variable to a key from "
-                             "https://api.census.gov/data/key_signup.html and restart the "
-                             "kernel so the new value is picked up. "
+                             "https://api.census.gov/data/key_signup.html. Note that a new "
+                             "environment variable only reaches processes started afterwards: "
+                             "if running in Jupyter, restarting the kernel is NOT enough, "
+                             "because the kernel inherits its environment from the Jupyter "
+                             "server. Shut down the server and relaunch it from a new terminal. "
                              "Request: " + api_hyperlink)
             else:
                 error_msg = ("Census API did not return JSON. The CENSUS_API_KEY environment "
