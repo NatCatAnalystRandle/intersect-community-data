@@ -384,20 +384,52 @@ class BaseInventory():
 
         print("       Census API data from: " + api_hyperlink)
 
+        # The Census API requires a key - requests without one are refused.
+        # Key signup (free): https://api.census.gov/data/key_signup.html
+        # The key is read from the CENSUS_API_KEY environment variable so that it
+        # stays out of the repository, and is added only to the request sent below
+        # - never to the hyperlink printed above, which appears in logs and in
+        # saved notebook output.
+        api_key = os.environ.get('CENSUS_API_KEY')
+        if api_key:
+            request_hyperlink = api_hyperlink + '&key=' + api_key
+        else:
+            request_hyperlink = api_hyperlink
+
         # Obtain Census API JSON Data
-        apijson = requests.get(api_hyperlink)
+        apijson = requests.get(request_hyperlink)
         if apijson.status_code != 200:
             print("API status code:",apijson.status_code)
             error_msg = "Failed to download the data from Census API."
             #logger.error(error_msg)
             raise Exception(error_msg)
 
+        # A missing or invalid key returns an HTML error page with status code 200,
+        # so the status code alone does not detect this failure. Without this check
+        # the HTML reaches the JSON parser and raises an unrelated JSONDecodeError.
+        try:
+            apidata = apijson.json()
+        except ValueError:
+            if not api_key:
+                error_msg = ("Census API did not return JSON, and no API key was found. "
+                             "Set the CENSUS_API_KEY environment variable to a key from "
+                             "https://api.census.gov/data/key_signup.html and restart the "
+                             "kernel so the new value is picked up. "
+                             "Request: " + api_hyperlink)
+            else:
+                error_msg = ("Census API did not return JSON. The CENSUS_API_KEY environment "
+                             "variable is set, so check that the key is valid and that the "
+                             "requested variables exist for this vintage and dataset. "
+                             "Request: " + api_hyperlink)
+            #logger.error(error_msg)
+            raise Exception(error_msg)
+
         # Convert the requested json into pandas dataframe
-        df = pd.DataFrame(columns=apijson.json()[0], data=apijson.json()[1:])
-        
+        df = pd.DataFrame(columns=apidata[0], data=apidata[1:])
+
         # save json as text file
         with open(json_filepath, 'w') as convert_file:
-            json.dump(apijson.json(),convert_file)
+            json.dump(apidata,convert_file)
 
         return df
 
