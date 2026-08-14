@@ -370,13 +370,22 @@ class BaseInventory():
 
         # Check if selected data already exists - if yes read in saved file
         if os.path.exists(json_filepath):
-             # reading the data from the file
-            with open(json_filepath) as f:
-                data = json.load(f)
-            print("Dictionary file",json_filepath,"Already exists - Skipping API Call.")
-            # Convert the requested json into pandas dataframe
-            df = pd.DataFrame(columns=data[0], data=data[1:])
-            return df
+            try:
+                # reading the data from the file
+                with open(json_filepath) as f:
+                    data = json.load(f)
+                print("Dictionary file",json_filepath,"Already exists - Skipping API Call.")
+                # Convert the requested json into pandas dataframe
+                df = pd.DataFrame(columns=data[0], data=data[1:])
+                return df
+            except (ValueError, IndexError):
+                # A run interrupted while the cache file was being written leaves
+                # a truncated file behind. Without this check every later run
+                # reads that file, fails to parse it, and stops - with an error
+                # that points at the parser rather than at the damaged file.
+                # Discard it and download the data again.
+                print("Cached file",json_filepath,"is incomplete - discarding it and downloading again.")
+                os.remove(json_filepath)
 
         # Set up hyperlink for Census API
         api_hyperlink = ('https://api.census.gov/data/' + vintage + '/'+dataset_name + '?get=' + get_vars +
@@ -431,8 +440,13 @@ class BaseInventory():
         df = pd.DataFrame(columns=apidata[0], data=apidata[1:])
 
         # save json as text file
-        with open(json_filepath, 'w') as convert_file:
+        # Write to a temporary file and then move it into place, so that a run
+        # interrupted during the write cannot leave a truncated file that later
+        # runs would treat as a valid cache.
+        temp_filepath = json_filepath + '.partial'
+        with open(temp_filepath, 'w') as convert_file:
             json.dump(apidata,convert_file)
+        os.replace(temp_filepath, json_filepath)
 
         return df
 
