@@ -5,6 +5,7 @@
 # and is available at https://www.mozilla.org/en-US/MPL/2.0/
 
 import requests # Census API Calls
+import time  # Backoff between Census API retries
 import os  # Operating System (os) For folders and finding working directory
 import pandas as pd
 import sys  # saving CSV files
@@ -405,13 +406,46 @@ class BaseInventory():
         else:
             request_hyperlink = api_hyperlink
 
-        # Obtain Census API JSON Data
-        apijson = requests.get(request_hyperlink)
-        if apijson.status_code != 200:
-            print("API status code:",apijson.status_code)
-            error_msg = "Failed to download the data from Census API."
-            #logger.error(error_msg)
-            raise Exception(error_msg)
+        # Obtain Census API JSON Data.
+        # Block level queries against the 2020 DHC are intermittently slow or
+        # dropped, so each request is given a timeout and retried with
+        # exponential backoff. Only failures that a retry could plausibly fix
+        # are retried: dropped connections, timeouts, server errors and rate
+        # limiting. A 4xx such as an unknown variable name is permanent, and is
+        # reported at once rather than after a minute of pointless waiting.
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
+            last_error = None
+            try:
+                apijson = requests.get(request_hyperlink, timeout=120)
+            except (requests.exceptions.Timeout,
+                    requests.exceptions.ConnectionError) as connect_error:
+                last_error = type(connect_error).__name__
+            else:
+                if apijson.status_code == 200:
+                    break
+                last_error = "HTTP " + str(apijson.status_code)
+                if apijson.status_code < 500 and apijson.status_code != 429:
+                    print("API status code:",apijson.status_code)
+                    error_msg = ("Failed to download the data from Census API ("
+                                 + last_error + "). Request: " + api_hyperlink)
+                    #logger.error(error_msg)
+                    raise Exception(error_msg)
+
+            if attempt == max_attempts:
+                error_msg = ("Failed to download the data from Census API after "
+                             + str(max_attempts) + " attempts. Last error: "
+                             + last_error + ". Request: " + api_hyperlink)
+                #logger.error(error_msg)
+                raise Exception(error_msg)
+
+            backoff = 2 ** attempt
+            print("       Attempt",attempt,"of",max_attempts,"failed:",last_error,
+                  "- retrying in",backoff,"seconds.")
+            time.sleep(backoff)
+
+        if attempt > 1:
+            print("       Succeeded on attempt",attempt)
 
         # A missing or invalid key returns an HTML error page with status code 200,
         # so the status code alone does not detect this failure. Without this check
