@@ -125,6 +125,16 @@ class prec_workflow_functions():
                                         outputfolders = self.outputfolders,
                                         outputfile = f"CorePREC_{self.basevintage}")
 
+        # basevintage must be passed. graft_on_new_char defaults it to "2010",
+        # and it uses the vintage to build the geography column name, so a 2020
+        # run without it looks for Block2010str and fails with a bare KeyError.
+        # The correct 2020 dictionaries were already being selected above, which
+        # is what made this look like it worked - the data was right and the
+        # geography column name was not.
+        #
+        # HUA_Disability_2020 does this graft by hand and passes basevintage
+        # explicitly, so the notebook path was unaffected and this only surfaces
+        # when run_prec_workflow is called directly.
         block_df["precihispan"] = BaseInventory.graft_on_new_char(base_inventory= block_df['preci'],
                                         state_county = self.state_county,
                                         new_char = 'hispan',
@@ -132,6 +142,8 @@ class prec_workflow_functions():
                                             sexbyage_P12HAI_varstem_roots if str(self.basevintage) == '2010' else sexbyage_P12HAI_2020_varstem_roots,
                                             hispan_byrace_P5_varstem_roots if str(self.basevintage) == '2010' else hispan_byrace_P5_2020_varstem_roots
                                             ],
+                                        basevintage = str(self.basevintage),
+                                        basegeolevel = 'Block',
                                         outputfile = f"preci_{self.basevintage}",
                                         outputfolders = self.outputfolders)
 
@@ -145,10 +157,13 @@ class prec_workflow_functions():
                             group = group,
                             outputfolder = self.outputfolder)
 
+        # Use the structure just discovered. The name sexbyage_PCT12_varstem_roots
+        # does not exist anywhere in the package, so this raised NameError for
+        # either vintage - the function could never have completed as written.
         tract_df["PCT12"] = BaseInventory.get_apidata(state_county = self.state_county,
                                         geo_level = 'tract',
-                                        vintage = str(self.basevintage), 
-                                        mutually_exclusive_varstems_roots_dictionaries = [sexbyage_PCT12_varstem_roots],
+                                        vintage = str(self.basevintage),
+                                        mutually_exclusive_varstems_roots_dictionaries = [sexbyage_PCT12],
                                         outputfolders = self.outputfolders,
                                         outputfile = f"{group}_{self.basevintage}")
 
@@ -219,9 +234,13 @@ class prec_workflow_functions():
                                         state_county = self.state_county,
                                         geo_level = 'tract',
                                         vintage = str(int(self.basevintage)+2),
+                                        # The 2022 dictionary is named
+                                        # disability_B18101_varstem_roots_2022;
+                                        # the components were transposed here,
+                                        # so this raised NameError for 2020.
                                         mutually_exclusive_varstems_roots_dictionaries =
                                                             [disability_B18101_varstem_roots if str(self.basevintage) == '2010' else
-                                                            disability_B18101_2022_varstem_roots],
+                                                            disability_B18101_varstem_roots_2022],
                                         outputfolders = self.outputfolders,
                                         outputfile = f"B18101_disability_{self.basevintage}")
 
