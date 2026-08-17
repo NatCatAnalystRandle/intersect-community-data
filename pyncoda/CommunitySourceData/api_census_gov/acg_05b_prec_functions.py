@@ -250,10 +250,18 @@ class prec_workflow_functions():
                                     prec_age_df['primary'],
                                     varname = 'randagePCT12')
 
-        # Also add B18101 age groups to tract disability data
-        tract_df["B18101"] = add_B18101age_groups(
-                                    tract_df["B18101"],
-                                    varname = 'randagePCT12')
+        # The tract disability data must NOT be sent through
+        # add_B18101age_groups. It already carries agegroupB18101, assigned by
+        # the variable dictionary - '004E' is male, age group 1, with a
+        # disability - so the band is a property of the Census cell rather than
+        # something to derive.
+        #
+        # The call that stood here asked for the band to be recomputed from
+        # randagePCT12, which is the random single year age given to a person.
+        # A tract level count of people has no such age, so it raised
+        # KeyError: 'randagePCT12'.
+        #
+        # Only the person records need the band derived, which is done above.
 
         print("Random merging disability data...")
         add_disability = add_new_char_by_random_merge_2dfs(
@@ -279,8 +287,32 @@ class prec_workflow_functions():
             outputfolder = self.outputfolders['RandomMerge'],
             savefiles = self.savefiles)
 
-        # Set up round options
-        rounds = add_disability.make_round_options_dict()
+        # Set the rounds explicitly rather than taking the generic defaults.
+        #
+        # make_round_options_dict includes a round that groups by race, which
+        # suits tables that carry a race dimension. B18101 does not - it is sex
+        # by age by disability status - so that round tries to sort the tract
+        # data by a column it does not have and raises KeyError: 'race'.
+        #
+        # This ladder matches the one HUA_Disability_2020 uses and is known to
+        # work: tract with sex and age band, then tract with sex, then tract
+        # alone, then county as the final fallback.
+        rounds = {'options': {
+                'option1' : {'notes' : 'Tract, sex and age band.',
+                            'common_group_vars' : ['agegroupB18101'],
+                            'by_groups' : {'All' : {'by_variables' : ['sex']}}},
+                'option2' : {'notes' : 'Tract and sex, drop the age band.',
+                            'common_group_vars' : [],
+                            'by_groups' : {'All' : {'by_variables' : ['sex']}}},
+                'option3' : {'notes' : 'Tract alone, drop sex.',
+                            'common_group_vars' : [],
+                            'by_groups' : {'All' : {'by_variables' : []}}},
+                'option4' : {'notes' : 'County, the broadest fallback.',
+                            'common_group_vars' : [],
+                            'by_groups' : {'All' : {'by_variables' : []}}}
+                                },
+                'geo_levels' : ['Tract','Tract','Tract','County']
+                }
 
         # Run multi-round random merge
         # Flags automatically created:
